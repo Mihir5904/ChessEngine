@@ -1,3 +1,5 @@
+import random
+
 class GameState():
     def __init__(self):
         #8x8 2d list, each elem 2 chars
@@ -20,17 +22,94 @@ class GameState():
         self.checkMate = False
         self.pins = []
         self.checks = []
+        self.queenSelfPawnCaptures = {'w': 0, 'b': 0}
+        self.bishopSpawnCount = {'w': 0, 'b': 0}
+        self.maxBishopSpawns = 2
+        self.explodingPawnsUsed = {'w': False, 'b': False}  # track one use per side
+        self.explosionSquares = []  # NEW: tracks explosion animation squares
+        self.specialExplosionMessage = None
+        self.gameOver = False
+        self.bishopJustSpawned = False
 
-    def makeMove(self,move):
+
+
+
+
+
+    def makeMove(self, move):
         self.board[move.startRow][move.startCol] = "--"
         self.board[move.endRow][move.endCol] = move.pieceMoved
-        self.moveLog.append(move) #log move for undo
-        self.whiteToMove = not self.whiteToMove #swap players
-        #update king location if moved
+        self.moveLog.append(move)
+        self.whiteToMove = not self.whiteToMove
+
+        # Update king location if moved
         if move.pieceMoved == 'wK':
             self.whiteKingLocation = (move.endRow, move.endCol)
         elif move.pieceMoved == 'bK':
             self.blackKingLocation = (move.endRow, move.endCol)
+
+        #  Queen self-captures two pawns → spawn bishop
+        if move.pieceMoved[1] == 'Q' and move.pieceCaptured != "--":
+            if move.pieceMoved[0] == move.pieceCaptured[0] and move.pieceCaptured[1] == 'p':
+                color = move.pieceMoved[0]
+                self.queenSelfPawnCaptures[color] += 1
+                if self.queenSelfPawnCaptures[color] == 2:
+                    self.spawnBishop(color)
+                    self.queenSelfPawnCaptures[color] = 0
+
+        #King capture ends game
+        if move.pieceCaptured == 'wK':
+            self.specialExplosionMessage = "I don't think this is how chess works, but congratulations I guess??"
+            self.gameOver = True
+        elif move.pieceCaptured == 'bK':
+            self.specialExplosionMessage = "I don't think this is how chess works, but congratulations I guess??"
+            self.gameOver = True
+
+
+    def spawnBishop(self, color):
+        if self.bishopSpawnCount[color] >= self.maxBishopSpawns:
+            return
+
+        emptySquares = [(r, c) for r in range(8) for c in range(8) if self.board[r][c] == "--"]
+        if emptySquares:
+            spawnSquare = random.choice(emptySquares)
+            piece = color + "B"
+            self.board[spawnSquare[0]][spawnSquare[1]] = piece
+            self.bishopSpawnCount[color] += 1
+            self.bishopJustSpawned = True
+
+
+    def explodePawn(self, r, c):
+        color = self.board[r][c][0]
+        if self.explodingPawnsUsed[color]:
+            return  # already used for this side
+
+        # Clear all 3x3 area centered at (r, c)
+        affectedSquares = []
+        for dr in (-1, 0, 1):
+            for dc in (-1, 0, 1):
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < 8 and 0 <= nc < 8:
+                    self.board[nr][nc] = "--"
+                    affectedSquares.append((nr, nc))  # collect for animation
+
+        self.explosionSquares = affectedSquares  #triggers the image overlay
+        self.explodingPawnsUsed[color] = True
+        self.whiteToMove = not self.whiteToMove  #switch turn after explosion
+        print(f"{color.upper()} pawn exploded at ({r}, {c})! That pawn had a family!")
+        
+        #Check if own king was destroyed
+        if color == 'w' and self.board[self.whiteKingLocation[0]][self.whiteKingLocation[1]] != 'wK':
+            self.specialExplosionMessage = "Viva la revolution??!"
+            self.gameOver = True
+        elif color == 'b' and self.board[self.blackKingLocation[0]][self.blackKingLocation[1]] != 'bK':
+            self.specialExplosionMessage = "Viva la revolution??!"
+            self.gameOver = True
+        else:
+            self.specialExplosionMessage = None
+
+
+
 
     def undoMove(self):
         if len(self.moveLog) !=0 : #make sure there are moves to undo
@@ -43,6 +122,7 @@ class GameState():
                 self.whiteKingLocation = (move.startRow, move.startCol)
             elif move.pieceMoved == 'bK':
                 self.blackKingLocation = (move.startRow, move.startCol)
+
 #Moves concerning checks
     def getValidMoves(self):
         moves = []
@@ -229,7 +309,9 @@ class GameState():
                         elif endPiece[0] == enemyColor:
                             moves.append(Move((r,c), (endRow,endCol), self.board))
                             break
-                        else:   #friendly piece
+                        else:  # friendly piece (allowed for queen now)
+                            if self.board[r][c][1] == 'Q':
+                                moves.append(Move((r, c), (endRow, endCol), self.board))
                             break
                 else:   #off board
                     break
@@ -278,7 +360,9 @@ class GameState():
                         elif endPiece[0] == enemyColor:
                             moves.append(Move((r,c), (endRow,endCol), self.board))
                             break
-                        else:   #friendly piece
+                        else:  # friendly piece (allowed for queen now)
+                            if self.board[r][c][1] == 'Q':
+                                moves.append(Move((r, c), (endRow, endCol), self.board))
                             break
                 else:   #off board
                     break
@@ -337,6 +421,6 @@ class Move():
         return self.getRankFile(self.startRow, self.startCol) + self.getRankFile(self.endRow,self.endCol)
     
     def getRankFile(self,r,c):
-        return self.colsToFiles[c] + self.rowsToRanks[r]  
+        return self.colsToFiles[c] + self.rowsToRanks[r]
 
     
