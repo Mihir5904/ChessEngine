@@ -20,18 +20,22 @@ class GameState():
         self.whiteKingLocation = (7,4)
         self.blackKingLocation = (0,4)
         self.checkMate = False
+        self.staleMate = False
+
         self.pins = []
         self.checks = []
+
         self.queenSelfPawnCaptures = {'w': 0, 'b': 0}
         self.bishopSpawnCount = {'w': 0, 'b': 0}
         self.maxBishopSpawns = 2
         self.explodingPawnsUsed = {'w': False, 'b': False}  # track one use per side
-        self.explosionSquares = []  # NEW: tracks explosion animation squares
+        self.explosionSquares = []  #tracks explosion animation squares
         self.specialExplosionMessage = None
+        
         self.gameOver = False
         self.bishopJustSpawned = False
-
-
+        self.pawnPromotionPending = None 
+        self.lastSpawnedBishopLocation = None
 
 
 
@@ -42,6 +46,7 @@ class GameState():
         self.moveLog.append(move)
         self.whiteToMove = not self.whiteToMove
 
+        
         # Update king location if moved
         if move.pieceMoved == 'wK':
             self.whiteKingLocation = (move.endRow, move.endCol)
@@ -56,14 +61,33 @@ class GameState():
                 if self.queenSelfPawnCaptures[color] == 2:
                     self.spawnBishop(color)
                     self.queenSelfPawnCaptures[color] = 0
+        
+        # Trigger promotion if pawn reaches back rank
+        if move.pieceMoved[1] == 'p':
+            if (move.pieceMoved[0] == 'w' and move.endRow == 0) or (move.pieceMoved[0] == 'b' and move.endRow == 7):
+                self.pawnPromotionPending = (move.endRow, move.endCol, move.pieceMoved[0])  # (row, col, color)
+
+        print(f"Attempting move: {move.getChessNotation()}") 
+        print(f"Piece moved: {move.pieceMoved}, Piece captured: {move.pieceCaptured}")
 
         #King capture ends game
         if move.pieceCaptured == 'wK':
-            self.specialExplosionMessage = "I don't think this is how chess works, but congratulations I guess??"
+            self.specialExplosionMessage = random.choice([
+                "How did that happen???",
+                "This isn't supposed to happen :/",
+                "Huh"
+            ])
             self.gameOver = True
+            print("DEBUG: makeMove - White King captured. Setting gameOver = True.")
+
         elif move.pieceCaptured == 'bK':
-            self.specialExplosionMessage = "I don't think this is how chess works, but congratulations I guess??"
+            self.specialExplosionMessage = random.choice([
+                "How did that happen???",
+                "This isn't supposed to happen :/",
+                "Huh"
+            ])
             self.gameOver = True
+            print("DEBUG: makeMove - Black King captured. Setting gameOver = True.")
 
 
     def spawnBishop(self, color):
@@ -77,6 +101,22 @@ class GameState():
             self.board[spawnSquare[0]][spawnSquare[1]] = piece
             self.bishopSpawnCount[color] += 1
             self.bishopJustSpawned = True
+            self.lastSpawnedBishopLocation = spawnSquare #Store the spawned location
+            print(f"Bishop spawned at {spawnSquare}")
+
+    '''''
+    def placeBishopAtLocation(self, r, c, color): # Method for synchronized placement
+        """Places a bishop at a specific (r, c) for synchronization."""
+        
+        if self.bishopSpawnCount[color] < self.maxBishopSpawns:
+            if self.board[r][c] == "--": # Ensure the square is empty
+                piece = color + "B"
+                self.board[r][c] = piece
+                self.bishopSpawnCount[color] += 1
+                self.bishopJustSpawned = True # Set for sound/visuals on receiver side
+                return True
+        return False
+    '''
 
 
     def explodePawn(self, r, c):
@@ -99,16 +139,61 @@ class GameState():
         print(f"{color.upper()} pawn exploded at ({r}, {c})! That pawn had a family!")
         
         #Check if own king was destroyed
-        if color == 'w' and self.board[self.whiteKingLocation[0]][self.whiteKingLocation[1]] != 'wK':
-            self.specialExplosionMessage = "Viva la revolution??!"
+        # Check if own king or enemy king was destroyed in the explosion
+        # Check if either king was destroyed in the explosion
+        w_king_alive = self.board[self.whiteKingLocation[0]][self.whiteKingLocation[1]] == 'wK'
+        b_king_alive = self.board[self.blackKingLocation[0]][self.blackKingLocation[1]] == 'bK'
+
+        if not w_king_alive and color == 'w':
+            self.specialExplosionMessage = random.choice([
+                "Viva la Revolution?!??",
+                "WHOOPS!",
+                "Okay whose idea was this",
+                "Oops, wrong king...",
+                "Eh, he had it coming",
+                "Never liked him much anyway",
+                "I don't think you were supposed to do that!!",
+                "Dynamic Performance!!!"
+            ])
             self.gameOver = True
-        elif color == 'b' and self.board[self.blackKingLocation[0]][self.blackKingLocation[1]] != 'bK':
-            self.specialExplosionMessage = "Viva la revolution??!"
+
+        elif not w_king_alive:
+            self.specialExplosionMessage = random.choice([
+                'Putting the "I" in Kamikaze ',
+                "War crimes!! Yayyyy!!!",
+                "Time for Democracy",
+                "Checkmate? More like checkboom.",
+                "Eliminated with extreme prejudice.",
+                "FATALITY"
+            ])
             self.gameOver = True
+
+        elif not b_king_alive and color == 'b':
+            self.specialExplosionMessage = random.choice([
+                "Viva la Revolution?!??",
+                "WHOOPS!",
+                "Okay whose idea was this",
+                "Eh, he had it coming",
+                "Never liked him much anyway",
+                "Oops, wrong king...",
+                "I don't think you were supposed to do that!!",
+                "Dynamic Performance!!!"
+            ])
+            self.gameOver = True
+
+        elif not b_king_alive:
+            self.specialExplosionMessage = random.choice([
+                'Putting the "I" in Kamikaze ',
+                "War crimes!! Yayyyy!!!",
+                "Time for Democracy",
+                "Eliminated with extreme prejudice.",
+                "Checkmate? More like checkboom.",
+                "FATALITY"
+            ])
+            self.gameOver = True
+
         else:
             self.specialExplosionMessage = None
-
-
 
 
     def undoMove(self):
@@ -141,7 +226,7 @@ class GameState():
                 checkCol = check[1]
                 pieceChecking = self.board[checkRow][checkCol]
                 validSquares = []
-                if pieceChecking == 'N':
+                if pieceChecking[1] == 'N':
                     validSquares = [(checkRow,checkCol)]
                 else:
                     for i in range(1,8):
@@ -151,13 +236,30 @@ class GameState():
                             break
                 for i in range(len(moves)-1, -1, -1):
                     if moves[i].pieceMoved[1] != 'K':
-                        if not(moves[i].endRow, moves[i].endCol) in validSquares:
+                        if (moves[i].endRow, moves[i].endCol) not in validSquares:
                             moves.remove(moves[i])
             else: #double check
                 self.getKingMoves(kingRow, kingCol, moves)
         else:
             moves = self.getAllPossibleMoves()
+        
+        #print(f"DEBUG: getValidMoves - len(moves) for current turn: {len(moves)}") 
+
+        if len(moves) == 0:
+            if self.inCheck:
+                self.checkMate = True
+                print("DEBUG: getValidMoves - Checkmate detected.")
+            else:
+                self.staleMate = True
+                print("DEBUG: getValidMoves - Stalemate detected.")
+            self.gameOver = True #Set gameOver to True when checkmate or stalemate occurs
+            print("DEBUG: getValidMoves - Setting gameOver = True due to checkmate/stalemate.")
+        else:
+            self.checkMate = False
+            self.staleMate = False
+        
         return moves
+
     
     def inCheck(self):
         if self.whiteToMove:
@@ -218,7 +320,10 @@ class GameState():
 
                         if (0 <= j <= 3 and type == 'R') or \
                             (4 <= j <= 7 and type =='B') or \
-                            (i == 1 and type == 'p' and ((enemyColor == 'w' and 6 <= j <= 7) or (enemyColor == 'b' and 4 <= j <= 5))) or \
+                            (i == 1 and type == 'p' and (
+                                (enemyColor == 'w' and j in [4, 5]) or 
+                                (enemyColor == 'b' and j in [6, 7])
+                            )) or \
                             (type == 'Q') or (i==1 and type == 'K') :
                             if possiblePin == (): #no blocking so check
                                 inCheck = True 
@@ -410,6 +515,7 @@ class Move():
         self.pieceMoved = board[self.startRow][self.startCol]
         self.pieceCaptured = board[self.endRow][self.endCol]
         self.moveID = self.startRow *1000 + self.startCol *100 + self.endRow *10 + self.endCol 
+        
 
 #Ovverriding equals method
     def __eq__(self,other):
@@ -418,9 +524,7 @@ class Move():
         return False
 
     def getChessNotation(self):
-        return self.getRankFile(self.startRow, self.startCol) + self.getRankFile(self.endRow,self.endCol)
-    
-    def getRankFile(self,r,c):
-        return self.colsToFiles[c] + self.rowsToRanks[r]
+        return self.getRankFile(self.startRow, self.startCol) + self.getRankFile(self.endRow, self.endCol)
 
-    
+    def getRankFile(self, r, c):
+        return self.colsToFiles[c] + self.rowsToRanks[r]
